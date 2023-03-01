@@ -29,6 +29,8 @@ private:
     pthread_t *m_threads;       //描述线程池的数组，其大小为m_thread_number
     std::list<T *> m_workqueue; //请求队列
     locker m_queuelocker;       //保护请求队列的互斥锁
+    //这是一个封装过后的对象,这里和数据库连接池不一样，数据库连接池的信号量要初始化为数据库连接的个数，因为开始时一个连接对象都没使用
+    //这里需要把信号量的值初始化为0，因为这个时候任务队列里一个任务也没有，也就是说信号量遇到post就加1,遇到wait就减1
     sem m_queuestat;            //是否有任务需要处理
     connection_pool *m_connPool;  //数据库
     int m_actor_model;          //模型切换
@@ -60,6 +62,8 @@ threadpool<T>::~threadpool()
 {
     delete[] m_threads;
 }
+//state参数是标志是读消息还是写消息
+//对于reactor模式,需要区分是读消息还是写消息
 template <typename T>
 bool threadpool<T>::append(T *request, int state)
 {
@@ -89,6 +93,8 @@ bool threadpool<T>::append_p(T *request)
     m_queuestat.post();
     return true;
 }
+//一个worker就是一个线程
+//worker函数之所以这么实现，具体见课本301页
 template <typename T>
 void *threadpool<T>::worker(void *arg)
 {
@@ -101,6 +107,7 @@ void threadpool<T>::run()
 {
     while (true)
     {
+        //获取任务
         m_queuestat.wait();
         m_queuelocker.lock();
         if (m_workqueue.empty())
@@ -113,8 +120,11 @@ void threadpool<T>::run()
         m_queuelocker.unlock();
         if (!request)
             continue;
+        //处理任务
+        //reactor模式
         if (1 == m_actor_model)
         {
+            //如果是读
             if (0 == request->m_state)
             {
                 if (request->read_once())
@@ -129,6 +139,7 @@ void threadpool<T>::run()
                     request->timer_flag = 1;
                 }
             }
+            //如果是写数据
             else
             {
                 if (request->write())
@@ -142,6 +153,7 @@ void threadpool<T>::run()
                 }
             }
         }
+        //proactor模式，也就是默认模式
         else
         {
             connectionRAII mysqlcon(&request->mysql, m_connPool);

@@ -7,12 +7,12 @@ WebServer::WebServer()
 
     //root文件夹路径
     char server_path[200];
+    //这一句等到文件目录
     getcwd(server_path, 200);
     char root[6] = "/root";
     m_root = (char *)malloc(strlen(server_path) + strlen(root) + 1);
     strcpy(m_root, server_path);
     strcat(m_root, root);
-
     //定时器
     users_timer = new client_data[MAX_FD];
 }
@@ -90,7 +90,7 @@ void WebServer::sql_pool()
     m_connPool = connection_pool::GetInstance();
     m_connPool->init("localhost", m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
 
-    //初始化数据库读取表
+    //初始化数据库读取表,读取所有用户名和密码
     users->initmysql_result(m_connPool);
 }
 
@@ -141,12 +141,12 @@ void WebServer::eventListen()
 
     utils.addfd(m_epollfd, m_listenfd, false, m_LISTENTrigmode);
     http_conn::m_epollfd = m_epollfd;
-
+    //管道统一事件源，供信号使用，总共只用到了两个信号
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, m_pipefd);
     assert(ret != -1);
     utils.setnonblocking(m_pipefd[1]);
     utils.addfd(m_epollfd, m_pipefd[0], false, 0);
-
+    //忽略SIGPIPE信号
     utils.addsig(SIGPIPE, SIG_IGN);
     utils.addsig(SIGALRM, utils.sig_handler, false);
     utils.addsig(SIGTERM, utils.sig_handler, false);
@@ -157,7 +157,7 @@ void WebServer::eventListen()
     Utils::u_pipefd = m_pipefd;
     Utils::u_epollfd = m_epollfd;
 }
-
+//有新的连接到来，添加新的定时器到users_timer里, 同时也添加了http_conn
 void WebServer::timer(int connfd, struct sockaddr_in client_address)
 {
     users[connfd].init(connfd, client_address, m_root, m_CONNTrigmode, m_close_log, m_user, m_passWord, m_databaseName);
@@ -186,6 +186,7 @@ void WebServer::adjust_timer(util_timer *timer)
     LOG_INFO("%s", "adjust timer once");
 }
 
+//在定时器容器里删除对应的定时器
 void WebServer::deal_timer(util_timer *timer, int sockfd)
 {
     timer->cb_func(&users_timer[sockfd]);
@@ -197,7 +198,7 @@ void WebServer::deal_timer(util_timer *timer, int sockfd)
     LOG_INFO("close fd %d", users_timer[sockfd].sockfd);
 }
 
-bool WebServer::dealclinetdata()
+bool WebServer::dealclientdata()
 {
     struct sockaddr_in client_address;
     socklen_t client_addrlength = sizeof(client_address);
@@ -291,7 +292,13 @@ void WebServer::dealwithread(int sockfd)
 
         //若监测到读事件，将该事件放入请求队列
         m_pool->append(users + sockfd, 0);
-
+        //这里这个improv变量和timer_flag变量在run函数里去改变,也就是工作线程
+        //当读取socket正确的时候，improv就赋值为1，timer_flag为0不变，以方便退出死循环
+        //当读取socket正确的时候，improv就赋值为1，timer_flag也赋值为1，以方便删除对应的定时器
+        //  但这样子做其实有点小问题，在reactor模式下才会有这个变量，reactor模式本来就是要工作线程自己去读取
+        //  和写入对应连接socket的数据，主线程只负责通知，通知完了就可以去做自己的事情了，这里却要等待工作线程读取完
+        //  数据才去做其他事情，和主线程自己读取数据完成之后通知工作线程有什么本质区别呢，主线程都没得到解放。
+        //后续给优化一下，把读取出错的逻辑放到工作线程里去处理
         while (true)
         {
             if (1 == users[sockfd].improv)
@@ -309,6 +316,7 @@ void WebServer::dealwithread(int sockfd)
     else
     {
         //proactor
+        //这里调用read_once()函数是在主线程里调用的，即主线程完成数据的收发
         if (users[sockfd].read_once())
         {
             LOG_INFO("deal with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
@@ -358,6 +366,7 @@ void WebServer::dealwithwrite(int sockfd)
     else
     {
         //proactor
+        //这里调用write函数是在主线程里调用的，即主线程完成数据的收发
         if (users[sockfd].write())
         {
             LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
@@ -395,13 +404,15 @@ void WebServer::eventLoop()
             //处理新到的客户连接
             if (sockfd == m_listenfd)
             {
-                bool flag = dealclinetdata();
-                if (false == flag)
+                bool flag = dealclientdata();
+                if (flag == false)
                     continue;
             }
+            //处理epoll异常事件
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
-                //服务器端关闭连接，移除对应的定时器
+                //服务器端关闭相应的socket连接，移除对应的定时器
+                //不用去处理http_conn *users和client_data *users_timers数组，后边新来了相应的文件描述符，直接覆盖就是
                 util_timer *timer = users_timer[sockfd].timer;
                 deal_timer(timer, sockfd);
             }
@@ -409,7 +420,7 @@ void WebServer::eventLoop()
             else if ((sockfd == m_pipefd[0]) && (events[i].events & EPOLLIN))
             {
                 bool flag = dealwithsignal(timeout, stop_server);
-                if (false == flag)
+                if (flag == false)
                     LOG_ERROR("%s", "dealclientdata failure");
             }
             //处理客户连接上接收到的数据

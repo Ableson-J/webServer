@@ -140,11 +140,13 @@ void Log::write_log(int level, const char *format, ...)
     log_str = m_buf;
 
     m_mutex.unlock();
-
+    //若m_is_async为true表示异步，默认为异步
+    //若异步,则将日志信息加入阻塞队列,同步则加锁向文件中写
     if (m_is_async && !m_log_queue->full())
     {
         m_log_queue->push(log_str);
     }
+    //如果阻塞队列满了，直接由工作线程写入磁盘
     else
     {
         m_mutex.lock();

@@ -6,6 +6,7 @@ sort_timer_lst::sort_timer_lst()
     head = NULL;
     tail = NULL;
 }
+
 sort_timer_lst::~sort_timer_lst()
 {
     util_timer *tmp = head;
@@ -93,22 +94,29 @@ void sort_timer_lst::del_timer(util_timer *timer)
     timer->next->prev = timer->prev;
     delete timer;
 }
+//定时任务处理函数
 void sort_timer_lst::tick()
 {
     if (!head)
     {
         return;
     }
-    
+    //获取当前时间
     time_t cur = time(NULL);
     util_timer *tmp = head;
+    //遍历定时器链表
     while (tmp)
     {
+        //链表容器为升序排列
+        //当前时间小于定时器的超时时间，后面的定时器也没有到期
         if (cur < tmp->expire)
         {
             break;
         }
+
+        //当前定时器到期，则调用回调函数，执行定时事件
         tmp->cb_func(tmp->user_data);
+        //将处理后的定时器从链表容器中删除，并重置头结点
         head = tmp->next;
         if (head)
         {
@@ -215,10 +223,14 @@ int *Utils::u_pipefd = 0;
 int Utils::u_epollfd = 0;
 
 class Utils;
+//定时器回调函数
 void cb_func(client_data *user_data)
 {
+    //删除非活动连接在socket上的注册事件
     epoll_ctl(Utils::u_epollfd, EPOLL_CTL_DEL, user_data->sockfd, 0);
     assert(user_data);
+    //关闭文件描述符
     close(user_data->sockfd);
+    //减少连接数
     http_conn::m_user_count--;
 }

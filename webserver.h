@@ -38,7 +38,7 @@ public:
     void timer(int connfd, struct sockaddr_in client_address);
     void adjust_timer(util_timer *timer);
     void deal_timer(util_timer *timer, int sockfd);
-    bool dealclinetdata();
+    bool dealclientdata();
     bool dealwithsignal(bool& timeout, bool& stop_server);
     void dealwithread(int sockfd);
     void dealwithwrite(int sockfd);
@@ -53,6 +53,7 @@ public:
 
     int m_pipefd[2];
     int m_epollfd;
+    //下标是文件描述符，内容是一个任务
     http_conn *users;
 
     //数据库相关
@@ -76,6 +77,7 @@ public:
     int m_CONNTrigmode;
 
     //定时器相关
+    //下标是文件描述符，内容是客户端数据
     client_data *users_timer;
     Utils utils;
 };

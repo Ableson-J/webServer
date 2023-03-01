@@ -49,6 +49,7 @@ public:
 //是针对单个连接来说的，即从连接池里获取一个连接，如果不这样做,
 //则每次要自己去释放连接，即调用ReleaseConnection；
 // 这样做了，connectionRAII对象消亡的时候会调用析构函数，里边自动调用ReleaseConnection
+//返回的mysql连接对象通过指针变量传出去，也就是con变量
 class connectionRAII{
 
 public:

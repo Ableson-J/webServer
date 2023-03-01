@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
     //触发模式
     server.trig_mode();
 
-    //监听
+    //监听，同时设置信号处理函数，包括超时信号和停止信号
     server.eventListen();
 
     //运行
