@@ -130,6 +130,7 @@ void WebServer::eventListen()
     ret = bind(m_listenfd, (struct sockaddr *)&address, sizeof(address));
     assert(ret >= 0);
     ret = listen(m_listenfd, 5);
+    LOG_INFO("listen socket is %d", m_listenfd);
     assert(ret >= 0);
 
     utils.init(TIMESLOT);
@@ -158,7 +159,7 @@ void WebServer::eventListen()
     Utils::u_epollfd = m_epollfd;
 }
 //有新的连接到来，添加新的定时器到users_timer里, 同时也添加了http_conn
-void WebServer::timer(int connfd, struct sockaddr_in client_address)
+void WebServer::add_timer(int connfd, struct sockaddr_in client_address)
 {
     users[connfd].init(connfd, client_address, m_root, m_CONNTrigmode, m_close_log, m_user, m_passWord, m_databaseName);
 
@@ -182,20 +183,20 @@ void WebServer::adjust_timer(util_timer *timer)
     time_t cur = time(NULL);
     timer->expire = cur + 3 * TIMESLOT;
     utils.m_timer_lst.adjust_timer(timer);
-
-    LOG_INFO("%s", "adjust timer once");
+    LOG_INFO("server: fd %d %s", timer->user_data->sockfd, "adjust timer once");
 }
 
 //在定时器容器里删除对应的定时器
 void WebServer::deal_timer(util_timer *timer, int sockfd)
 {
+    m_mutex.lock();
     timer->cb_func(&users_timer[sockfd]);
     if (timer)
     {
         utils.m_timer_lst.del_timer(timer);
     }
-
-    LOG_INFO("close fd %d", users_timer[sockfd].sockfd);
+    LOG_INFO("delete_timer and close fd %d", users_timer[sockfd].sockfd);
+    m_mutex.unlock();
 }
 
 bool WebServer::dealclientdata()
@@ -216,7 +217,8 @@ bool WebServer::dealclientdata()
             LOG_ERROR("%s", "Internal server busy");
             return false;
         }
-        timer(connfd, client_address);
+        LOG_INFO("server: new connection come, fd is  %d", connfd);
+        add_timer(connfd, client_address);
     }
 
     else
@@ -235,7 +237,8 @@ bool WebServer::dealclientdata()
                 LOG_ERROR("%s", "Internal server busy");
                 break;
             }
-            timer(connfd, client_address);
+            LOG_INFO("server: new connection come, fd is  %d", connfd);
+            add_timer(connfd, client_address);
         }
         return false;
     }
@@ -289,7 +292,7 @@ void WebServer::dealwithread(int sockfd)
         {
             adjust_timer(timer);
         }
-
+        users[sockfd].m_server = this;
         //若监测到读事件，将该事件放入请求队列
         m_pool->append(users + sockfd, 0);
         //这里这个improv变量和timer_flag变量在run函数里去改变,也就是工作线程
@@ -299,19 +302,19 @@ void WebServer::dealwithread(int sockfd)
         //  和写入对应连接socket的数据，主线程只负责通知，通知完了就可以去做自己的事情了，这里却要等待工作线程读取完
         //  数据才去做其他事情，和主线程自己读取数据完成之后通知工作线程有什么本质区别呢，主线程都没得到解放。
         //后续给优化一下，把读取出错的逻辑放到工作线程里去处理
-        while (true)
-        {
-            if (1 == users[sockfd].improv)
-            {
-                if (1 == users[sockfd].timer_flag)
-                {
-                    deal_timer(timer, sockfd);
-                    users[sockfd].timer_flag = 0;
-                }
-                users[sockfd].improv = 0;
-                break;
-            }
-        }
+//        while (true)
+//        {
+//            if (1 == users[sockfd].improv)
+//            {
+//                if (1 == users[sockfd].timer_flag)
+//                {
+//                    deal_timer(timer, sockfd);
+//                    users[sockfd].timer_flag = 0;
+//                }
+//                users[sockfd].improv = 0;
+//                break;
+//            }
+//        }
     }
     else
     {
@@ -319,7 +322,7 @@ void WebServer::dealwithread(int sockfd)
         //这里调用read_once()函数是在主线程里调用的，即主线程完成数据的收发
         if (users[sockfd].read_once())
         {
-            LOG_INFO("deal with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+            LOG_INFO("procator: fd %d deal with the client(%s)", sockfd, inet_ntoa(users[sockfd].get_address()->sin_addr));
 
             //若监测到读事件，将该事件放入请求队列
             m_pool->append_p(users + sockfd);
@@ -331,6 +334,7 @@ void WebServer::dealwithread(int sockfd)
         }
         else
         {
+            LOG_ERROR("server: fd %d %s", sockfd, "read data failure");
             deal_timer(timer, sockfd);
         }
     }
@@ -349,19 +353,19 @@ void WebServer::dealwithwrite(int sockfd)
 
         m_pool->append(users + sockfd, 1);
 
-        while (true)
-        {
-            if (1 == users[sockfd].improv)
-            {
-                if (1 == users[sockfd].timer_flag)
-                {
-                    deal_timer(timer, sockfd);
-                    users[sockfd].timer_flag = 0;
-                }
-                users[sockfd].improv = 0;
-                break;
-            }
-        }
+//        while (true)
+//        {
+//            if (1 == users[sockfd].improv)
+//            {
+//                if (1 == users[sockfd].timer_flag)
+//                {
+//                    deal_timer(timer, sockfd);
+//                    users[sockfd].timer_flag = 0;
+//                }
+//                users[sockfd].improv = 0;
+//                break;
+//            }
+//        }
     }
     else
     {
@@ -369,7 +373,7 @@ void WebServer::dealwithwrite(int sockfd)
         //这里调用write函数是在主线程里调用的，即主线程完成数据的收发
         if (users[sockfd].write())
         {
-            LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+            LOG_INFO("proactor: fd %d send data to the client(%s)", sockfd, inet_ntoa(users[sockfd].get_address()->sin_addr));
 
             if (timer)
             {
@@ -378,6 +382,7 @@ void WebServer::dealwithwrite(int sockfd)
         }
         else
         {
+            LOG_ERROR("server: fd %d %s", sockfd, "send data failure");
             deal_timer(timer, sockfd);
         }
     }
@@ -405,7 +410,7 @@ void WebServer::eventLoop()
             if (sockfd == m_listenfd)
             {
                 bool flag = dealclientdata();
-                if (flag == false)
+                if (!flag)
                     continue;
             }
             //处理epoll异常事件
@@ -414,30 +419,34 @@ void WebServer::eventLoop()
                 //服务器端关闭相应的socket连接，移除对应的定时器
                 //不用去处理http_conn *users和client_data *users_timers数组，后边新来了相应的文件描述符，直接覆盖就是
                 util_timer *timer = users_timer[sockfd].timer;
+                LOG_INFO("server: %s on fd %d", "epoll unusual event", sockfd);
+                LOG_INFO("server: unusual envent is %x", events[i].events);
                 deal_timer(timer, sockfd);
             }
             //处理信号
             else if ((sockfd == m_pipefd[0]) && (events[i].events & EPOLLIN))
             {
                 bool flag = dealwithsignal(timeout, stop_server);
-                if (flag == false)
+                if (!flag)
                     LOG_ERROR("%s", "dealclientdata failure");
             }
             //处理客户连接上接收到的数据
             else if (events[i].events & EPOLLIN)
             {
+                LOG_INFO("server: fd %d come new data", sockfd);
                 dealwithread(sockfd);
             }
             else if (events[i].events & EPOLLOUT)
             {
+                LOG_INFO("server: fd %d send new data", sockfd);
                 dealwithwrite(sockfd);
             }
         }
         if (timeout)
         {
             utils.timer_handler();
-
-            LOG_INFO("%s", "timer tick");
+            LOG_ERROR("%s", "timer tick");
+            LOG_INFO("server: %s", "timer tick");
 
             timeout = false;
         }

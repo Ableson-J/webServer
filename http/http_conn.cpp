@@ -1,7 +1,7 @@
 #include "http_conn.h"
-
 #include <mysql/mysql.h>
 #include <fstream>
+#include "../webserver.h"
 
 //定义http响应的一些状态信息
 const char *ok_200_title = "OK";
@@ -102,7 +102,7 @@ void http_conn::close_conn(bool real_close)
 {
     if (real_close && (m_sockfd != -1))
     {
-        printf("close %d\n", m_sockfd);
+        //printf("close %d\n", m_sockfd);
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
         m_user_count--;
@@ -320,7 +320,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
     }
     else
     {
-        LOG_INFO("oop!unknow header: %s", text);
+        LOG_INFO("client ask: fd %d oop unknow header: %s", m_sockfd, text);
     }
     return NO_REQUEST;
 }
@@ -348,7 +348,7 @@ http_conn::HTTP_CODE http_conn::process_read()
     {
         text = get_line();
         m_start_line = m_checked_idx;
-        LOG_INFO("%s", text);
+        LOG_INFO("client ask: fd %d %s", m_sockfd, text);
         switch (m_check_state)
         {
             case CHECK_STATE_REQUESTLINE:
@@ -501,7 +501,7 @@ http_conn::HTTP_CODE http_conn::do_request()
     }
     //通过stat获取请求资源文件信息，成功则将信息更新到m_file_stat结构体
     //失败返回NO_RESOURCE状态，表示资源不存在
-    printf("m_real_file:%s\n", m_real_file);
+    //printf("m_real_file:%s\n", m_real_file);
     if (stat(m_real_file, &m_file_stat) < 0){
         return NO_RESOURCE;
     }
@@ -614,7 +614,7 @@ bool http_conn::add_response(const char *format, ...)
     //清空可变参列表
     va_end(arg_list);
 
-    LOG_INFO("request:%s", m_write_buf);
+//    LOG_INFO("server reply: fd %d request:%s",  m_sockfd, m_write_buf);
 
     return true;
 }
@@ -701,6 +701,7 @@ bool http_conn::process_write(HTTP_CODE ret)
                 //第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
                 m_iv[0].iov_base = m_write_buf;
                 m_iv[0].iov_len = m_write_idx;
+                LOG_INFO("server reply: fd %d request:%s",  m_sockfd, m_write_buf);
                 //第二个iovec指针指向mmap返回的文件指针，长度指向文件大小
                 m_iv[1].iov_base = m_file_address;
                 m_iv[1].iov_len = m_file_stat.st_size;
@@ -740,6 +741,7 @@ void http_conn::process()
     if (!write_ret)
     {
         close_conn(true);
+        return;
     }
     modfd(m_epollfd, m_sockfd, EPOLLOUT, m_TRIGMode);
 }

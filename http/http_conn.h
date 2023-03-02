@@ -26,6 +26,7 @@
 #include "../timer/lst_timer.h"
 #include "../log/log.h"
 
+class WebServer;
 class http_conn
 {
 public:
@@ -136,9 +137,10 @@ public:
     static int m_user_count;
     MYSQL *mysql;
     int m_state;  //读为0, 写为1
-
-private:
+    WebServer* m_server;
     int m_sockfd;
+private:
+    
     sockaddr_in m_address;
     //存储读取的请求报文数据
     char m_read_buf[READ_BUFFER_SIZE];

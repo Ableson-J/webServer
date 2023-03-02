@@ -70,6 +70,7 @@ bool Log::init(const char *file_name, int close_log, int log_buf_size, int split
 
 void Log::write_log(int level, const char *format, ...)
 {
+    m_mutex.lock();
     struct timeval now = {0, 0};
     gettimeofday(&now, NULL);
     time_t t = now.tv_sec;
@@ -95,7 +96,7 @@ void Log::write_log(int level, const char *format, ...)
         break;
     }
     //写入一个log，对m_count++, m_split_lines最大行数
-    m_mutex.lock();
+//    m_mutex.lock();
     m_count++;
 
     if (m_today != my_tm.tm_mday || m_count % m_split_lines == 0) //everyday log
@@ -121,13 +122,13 @@ void Log::write_log(int level, const char *format, ...)
         m_fp = fopen(new_log, "a");
     }
  
-    m_mutex.unlock();
+//    m_mutex.unlock();
 
     va_list valst;
     va_start(valst, format);
 
     string log_str;
-    m_mutex.lock();
+//    m_mutex.lock();
 
     //写入的具体时间内容格式
     int n = snprintf(m_buf, 48, "%d-%02d-%02d %02d:%02d:%02d.%06ld %s ",
@@ -139,7 +140,7 @@ void Log::write_log(int level, const char *format, ...)
     m_buf[n + m + 1] = '\0';
     log_str = m_buf;
 
-    m_mutex.unlock();
+//    m_mutex.unlock();
     //若m_is_async为true表示异步，默认为异步
     //若异步,则将日志信息加入阻塞队列,同步则加锁向文件中写
     if (m_is_async && !m_log_queue->full())
@@ -149,12 +150,13 @@ void Log::write_log(int level, const char *format, ...)
     //如果阻塞队列满了，直接由工作线程写入磁盘
     else
     {
-        m_mutex.lock();
+//        m_mutex.lock();
         fputs(log_str.c_str(), m_fp);
-        m_mutex.unlock();
+//        m_mutex.unlock();
     }
 
     va_end(valst);
+    m_mutex.unlock();
 }
 
 void Log::flush(void)

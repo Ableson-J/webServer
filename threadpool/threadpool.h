@@ -7,6 +7,8 @@
 #include <pthread.h>
 #include "../lock/locker.h"
 #include "../CGImysql/sql_connection_pool.h"
+#include "../timer/lst_timer.h"
+#include "../log/log.h"
 
 template <typename T>
 class threadpool
@@ -124,33 +126,46 @@ void threadpool<T>::run()
         //reactor模式
         if (1 == m_actor_model)
         {
+            util_timer *timer = request->m_server->users_timer[request->m_sockfd].timer;
             //如果是读
             if (0 == request->m_state)
             {
                 if (request->read_once())
                 {
-                    request->improv = 1;
+//                    request->improv = 1;
                     connectionRAII mysqlcon(&request->mysql, m_connPool);
                     request->process();
                 }
                 else
                 {
-                    request->improv = 1;
-                    request->timer_flag = 1;
+                    //下面这句不用，因为deal_timer里会关闭
+//                    request->close_conn(true);
+//                    LOG_ERROR1("server: fd %d %s", request->m_sockfd, "read data failure");
+
+                    request->m_server->deal_timer(timer, request->m_sockfd);
+//                    request->m_server->users[sockfd].timer_flag = 0;
+//                    request->improv = 1;
+//                    request->timer_flag = 1;
                 }
             }
             //如果是写数据
             else
             {
-                if (request->write())
-                {
-                    request->improv = 1;
+                if (!request->write()){
+                    //下面这句不用，因为deal_timer里会关闭
+//                    request->close_conn(true);
+//                    LOG_ERROR1("server: fd %d %s", request->m_sockfd, "send data failure");
+                    request->m_server->deal_timer(timer, request->m_sockfd);
                 }
-                else
-                {
-                    request->improv = 1;
-                    request->timer_flag = 1;
-                }
+//                if (request->write())
+//                {
+//                    request->improv = 1;
+//                }
+//                else
+//                {
+//                    request->improv = 1;
+//                    request->timer_flag = 1;
+//                }
             }
         }
         //proactor模式，也就是默认模式

@@ -35,7 +35,7 @@ public:
     void trig_mode();
     void eventListen();
     void eventLoop();
-    void timer(int connfd, struct sockaddr_in client_address);
+    void add_timer(int connfd, struct sockaddr_in client_address);
     void adjust_timer(util_timer *timer);
     void deal_timer(util_timer *timer, int sockfd);
     bool dealclientdata();
@@ -75,6 +75,8 @@ public:
     int m_TRIGMode;
     int m_LISTENTrigmode;
     int m_CONNTrigmode;
+
+    locker m_mutex;
 
     //定时器相关
     //下标是文件描述符，内容是客户端数据

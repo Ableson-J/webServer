@@ -20,13 +20,16 @@ sort_timer_lst::~sort_timer_lst()
 
 void sort_timer_lst::add_timer(util_timer *timer)
 {
+    m_mutex.lock();
     if (!timer)
     {
+        m_mutex.unlock();
         return;
     }
     if (!head)
     {
         head = tail = timer;
+        m_mutex.unlock();
         return;
     }
     if (timer->expire < head->expire)
@@ -34,19 +37,24 @@ void sort_timer_lst::add_timer(util_timer *timer)
         timer->next = head;
         head->prev = timer;
         head = timer;
+        m_mutex.unlock();
         return;
     }
     add_timer(timer, head);
+    m_mutex.unlock();
 }
 void sort_timer_lst::adjust_timer(util_timer *timer)
 {
+    m_mutex.lock();
     if (!timer)
     {
+        m_mutex.unlock();
         return;
     }
     util_timer *tmp = timer->next;
     if (!tmp || (timer->expire < tmp->expire))
     {
+        m_mutex.unlock();
         return;
     }
     if (timer == head)
@@ -62,11 +70,14 @@ void sort_timer_lst::adjust_timer(util_timer *timer)
         timer->next->prev = timer->prev;
         add_timer(timer, timer->next);
     }
+    m_mutex.unlock();
 }
 void sort_timer_lst::del_timer(util_timer *timer)
 {
+    m_mutex.lock();
     if (!timer)
     {
+        m_mutex.unlock();
         return;
     }
     if ((timer == head) && (timer == tail))
@@ -74,6 +85,7 @@ void sort_timer_lst::del_timer(util_timer *timer)
         delete timer;
         head = NULL;
         tail = NULL;
+        m_mutex.unlock();
         return;
     }
     if (timer == head)
@@ -81,6 +93,7 @@ void sort_timer_lst::del_timer(util_timer *timer)
         head = head->next;
         head->prev = NULL;
         delete timer;
+        m_mutex.unlock();
         return;
     }
     if (timer == tail)
@@ -88,17 +101,21 @@ void sort_timer_lst::del_timer(util_timer *timer)
         tail = tail->prev;
         tail->next = NULL;
         delete timer;
+        m_mutex.unlock();
         return;
     }
     timer->prev->next = timer->next;
     timer->next->prev = timer->prev;
     delete timer;
+    m_mutex.unlock();
 }
 //定时任务处理函数
 void sort_timer_lst::tick()
 {
+    m_mutex.lock();
     if (!head)
     {
+        m_mutex.unlock();
         return;
     }
     //获取当前时间
@@ -125,6 +142,7 @@ void sort_timer_lst::tick()
         delete tmp;
         tmp = head;
     }
+    m_mutex.unlock();
 }
 
 void sort_timer_lst::add_timer(util_timer *timer, util_timer *lst_head)

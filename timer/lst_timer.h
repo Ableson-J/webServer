@@ -81,6 +81,7 @@ private:
 
     util_timer *head;
     util_timer *tail;
+    locker m_mutex;
 };
 //工具类，其中包括了一些常用的函数,里边有一些函数在http_conn.cpp里也有定义，之后可以优化一下，免得多个地方定义
 //1、addfd 内核事件表注册读事件
