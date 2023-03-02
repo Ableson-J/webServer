@@ -132,7 +132,6 @@ void threadpool<T>::run()
             {
                 if (request->read_once())
                 {
-//                    request->improv = 1;
                     connectionRAII mysqlcon(&request->mysql, m_connPool);
                     request->process();
                 }
@@ -143,9 +142,6 @@ void threadpool<T>::run()
 //                    LOG_ERROR1("server: fd %d %s", request->m_sockfd, "read data failure");
 
                     request->m_server->deal_timer(timer, request->m_sockfd);
-//                    request->m_server->users[sockfd].timer_flag = 0;
-//                    request->improv = 1;
-//                    request->timer_flag = 1;
                 }
             }
             //如果是写数据
@@ -157,15 +153,6 @@ void threadpool<T>::run()
 //                    LOG_ERROR1("server: fd %d %s", request->m_sockfd, "send data failure");
                     request->m_server->deal_timer(timer, request->m_sockfd);
                 }
-//                if (request->write())
-//                {
-//                    request->improv = 1;
-//                }
-//                else
-//                {
-//                    request->improv = 1;
-//                    request->timer_flag = 1;
-//                }
             }
         }
         //proactor模式，也就是默认模式
