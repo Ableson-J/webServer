@@ -295,26 +295,6 @@ void WebServer::dealwithread(int sockfd)
         users[sockfd].m_server = this;
         //若监测到读事件，将该事件放入请求队列
         m_pool->append(users + sockfd, 0);
-        //这里这个improv变量和timer_flag变量在run函数里去改变,也就是工作线程
-        //当读取socket正确的时候，improv就赋值为1，timer_flag为0不变，以方便退出死循环
-        //当读取socket正确的时候，improv就赋值为1，timer_flag也赋值为1，以方便删除对应的定时器
-        //  但这样子做其实有点小问题，在reactor模式下才会有这个变量，reactor模式本来就是要工作线程自己去读取
-        //  和写入对应连接socket的数据，主线程只负责通知，通知完了就可以去做自己的事情了，这里却要等待工作线程读取完
-        //  数据才去做其他事情，和主线程自己读取数据完成之后通知工作线程有什么本质区别呢，主线程都没得到解放。
-        //后续给优化一下，把读取出错的逻辑放到工作线程里去处理
-//        while (true)
-//        {
-//            if (1 == users[sockfd].improv)
-//            {
-//                if (1 == users[sockfd].timer_flag)
-//                {
-//                    deal_timer(timer, sockfd);
-//                    users[sockfd].timer_flag = 0;
-//                }
-//                users[sockfd].improv = 0;
-//                break;
-//            }
-//        }
     }
     else
     {
@@ -352,20 +332,6 @@ void WebServer::dealwithwrite(int sockfd)
         }
 
         m_pool->append(users + sockfd, 1);
-
-//        while (true)
-//        {
-//            if (1 == users[sockfd].improv)
-//            {
-//                if (1 == users[sockfd].timer_flag)
-//                {
-//                    deal_timer(timer, sockfd);
-//                    users[sockfd].timer_flag = 0;
-//                }
-//                users[sockfd].improv = 0;
-//                break;
-//            }
-//        }
     }
     else
     {
