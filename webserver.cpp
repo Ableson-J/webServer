@@ -411,9 +411,7 @@ void WebServer::eventLoop()
         if (timeout)
         {
             utils.timer_handler();
-            LOG_ERROR("%s", "timer tick");
             LOG_INFO("server: %s", "timer tick");
-
             timeout = false;
         }
     }

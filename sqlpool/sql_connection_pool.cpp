@@ -82,6 +82,7 @@ MYSQL *connection_pool::GetConnection()
 }
 
 //释放当前使用的连接
+//这里释放的意思是把这个连接放回连接池，并不是断开连接
 bool connection_pool::ReleaseConnection(MYSQL *con)
 {
 	if (NULL == con)
